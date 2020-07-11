@@ -28,7 +28,7 @@ def punctuation_remove(text):
 '''
 문자 바꾸기
 >>> table = str.maketrans('aeiou', '12345') a는 1 e는 2 ... 에 대응하는 테이블이 만들어짐
->>> 'apple'.translate(table) 테이블에 맞게 문자변경 (기존 apple이 바뀌는게 아님! immutable 이니께
+>>> 'apple'.translate(table) 테이블에 맞게 문자변경 (기존 apple이 바뀌는게 아님! immutable 이니께)
 '1ppl2'
 '''
 '''
