@@ -9,12 +9,12 @@ from nltk.stem import WordNetLemmatizer #lemmatization 에 사용
 from nltk.stem import PorterStemmer #stemming 에 사용
 from nltk import word_tokenize #tokenization 에 사용 주로 쓰는게 이것과 nltk 의 WordPunctTokenizer
 
-
 df_train = pd.read_csv("C:/Users/jiu kim/Desktop/computer science/git/first-kaggle/00_source/train.csv")
 df_test = pd.read_csv("C:/Users/jiu kim/Desktop/computer science/git/first-kaggle/00_source/test.csv")
 
 print('train set shape = {}'.format(df_train.shape))
 print('test set shape = {}'.format(df_test.shape))
+print(df_train.head())
 
 # url 제거
 def remove_url(text):
@@ -96,14 +96,15 @@ def tokenization(text):
     return tokens
 
 tokens = df_total['text'].apply(lambda x: tokenization(x))
-print(tokens.head(10))
+print(tokens.head())
 
-# word embedding
+'''# word embedding
 model = gensim.models.Word2Vec(size=150, window=5, workers=4, sg=0, min_count=5)
 model.build_vocab(tokens)
 model.train(sentences=tokens, total_examples=len(tokens), epochs=model.epochs)
 word_vectors = model.wv
-print(len(word_vectors.vocab))
+print(len(word_vectors.vocab))'''
+
 
 '''word_vectors = model.wv
 count = 0
@@ -117,19 +118,125 @@ for word in word_vectors.vocab:
 print(len(vector))
 print(vector)'''
 
-# 이제 모델 만들차례...
-# bert를 쓰긴했는데 모델 공부하다 보니까 앞에 기본적인 fcnn이나 머신러닝을 다뤄보지도 않고 이걸 깊게 파고드는 건 시기상조인 것 같아서 일단 돌아가기만 하도록 했다. 스터디는 해야하니까..
-import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.models import Model
-from tensorflow.keras.callbacks import ModelCheckpoint
-import tensorflow_hub as hub
+# 정수 인코딩
+def gen_voca(tokenized_text):
+    voca = {}
+    for sample in tokenized_text:
+        for token in sample:
+            if token not in voca:
+                voca[token] = 0
+            else:
+                voca[token] += 1
+    return voca
 
-model = build_model(bert_layer, max_len=160)
+def indexing(voca, min_freq, voca_size):
+    voca_sorted = sorted(voca.items(), key = lambda x:x[1], reverse=True)
+    word_index = {}
+    i = 0
+    for (word, frequency) in voca_sorted:
+        if frequency > min_freq:
+            i += 1
+            word_index[word] = i
+
+    word_frequency = [w for w,c in word_index.items() if c > voca_size]
+    for w in word_frequency:
+        del word_index[w]
+    word_index['OOV'] = len(word_index) + 1
+
+    return word_index
+
+voca = gen_voca(tokens)
+print(len(voca))
+word_index = indexing(voca, 1, 10000) # 어차피 한번 나오는거 빼면 5000개도 안되네
+print(word_index)
+print(len(word_index))
+
+def integer_encoding(word_index, tokenized_text):
+    encoded = []
+    for sentence in tokenized_text:
+        temp = []
+        for word in sentence:
+            try:
+                temp.append(word_index[word])
+            except KeyError:
+                temp.append(word_index['OOV'])
+        encoded.append(temp)
+    return encoded
+
+encoded = integer_encoding(word_index, tokens)
+print(encoded[:10])
+
+def padding(encoded):
+    max_len = 0
+    for s in encoded:
+        if len(s) > max_len:
+            max_len = len(s)
+
+    for s in encoded:
+        while len(s) < max_len:
+            s.append(0)
+
+    padded_np = np.array(encoded)
+    return padded_np
+
+padded_np = padding(encoded)
+print(padded_np[:10])
+
+x_train = padded_np[:len(df_train)]
+x_test = padded_np[len(df_train):]
+y_train = np.array(df_train.target).reshape(-1, 1)
+print(x_train.shape)
+print(x_test.shape)
+print(y_train.shape)
+
+#원핫인코딩
+from tensorflow.keras.utils import to_categorical
+
+x_train_onehot = to_categorical(x_train)
+x_test_onehot = to_categorical(x_test)
+print(x_train_onehot.shape)
+print(x_train_onehot.nbytes)
+
+# 신경망 모델링
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, SimpleRNN
+from tensorflow.keras.layers import Embedding
+
+model = Sequential()
+
+model.add(Embedding(4754, 32))
+model.add(SimpleRNN(8))
+model.add(Dense(1, activation='sigmoid'))
+
 print(model.summary())
 
+model.compile(optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
 
+history = model.fit(x_train, y_train, epochs=20, batch_size=32)
+
+import matplotlib.pyplot as plt
+
+plt.plot(history.history['accuracy'])
+plt.show()
+
+a = model.predict(x_test)
+
+y_hat = []
+for i in a:
+    if i > 0.5:
+        y_hat.append(1)
+    else:
+        y_hat.append(0)
+
+print(y_hat[:10])
+
+submission = pd.read_csv("/kaggle/input/nlp-getting-started/sample_submission.csv")
+submission.target = y_hat
+submission.to_csv('submission.csv', index=False)
+
+# 사실 to_categorical 부분부터는 파이참에서 케라스 에러가 자꾸나서 캐글에서 마저 작성함
+# 정확도는 0.75666 이 나왔고 심플 rnn으로는 괜찮게 나온듯함. 로버타쓰신 분이 78프론가 나왔다고 하니까
+# 출력값하고 그래프를 볼 수 있게 똑같은 내용의 ipynb 파일도 같이 기록!
 
 
 
